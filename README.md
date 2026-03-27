@@ -1,38 +1,61 @@
-# 🛡️ OS FraudShield — Stack complète
+# 🛡️ OS FraudShield — Guide d'installation (Mac)
 
-API de détection de fraude en temps réel avec dashboard connecté.
-**Backend** FastAPI (Python) + **Frontend** Next.js (React/TypeScript)
-
----
-
-## 🏗️ Architecture réelle
-
-```
-┌──────────────────────────────────────────────────────┐
-│  Next.js (port 3000)                                 │
-│  /login  /register  /dashboard                       │
-│  /dashboard/transactions  /alerts  /apikeys          │
-└─────────────────────┬────────────────────────────────┘
-                      │ fetch() avec JWT ou x-api-key
-┌─────────────────────▼────────────────────────────────┐
-│  FastAPI (port 8000)                                 │
-│  /auth/*   /v1/analyze   /v1/stats                   │
-│  /v1/transactions   /v1/alerts   /v1/apikeys         │
-└──────────┬───────────────────────┬───────────────────┘
-           │                       │
-    ┌──────▼──────┐         ┌──────▼──────┐
-    │ PostgreSQL  │         │    Redis    │
-    │ (port 5432) │         │ (port 6379) │
-    └─────────────┘         └─────────────┘
-```
+API de détection de fraude en temps réel.
+**Backend** FastAPI (Python) + **Frontend** Next.js + **DB** PostgreSQL via Docker
 
 ---
 
-## 📁 Structure
+## 🏗️ Ce qui se lance où
+
+```
+Terminal 1 → Docker (PostgreSQL + Redis)
+Terminal 2 → Backend Python  → http://localhost:8000
+Terminal 3 → Frontend Next.js → http://localhost:3000
+```
+
+Docker gère uniquement la base de données.
+Le backend et le frontend se lancent manuellement.
+
+---
+
+## ⚙️ Étape 0 — Vérifier les prérequis
+
+Ouvre un terminal et vérifie que tout est installé :
+
+```bash
+python3 --version   # doit afficher 3.10 ou plus
+node --version      # doit afficher 18 ou plus
+docker --version    # doit afficher 24 ou plus
+```
+
+### Si Python3 manque
+
+```bash
+# Installer Homebrew d'abord si pas déjà fait
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Puis installer Python
+brew install python3
+```
+
+### Si Node.js manque
+
+```bash
+brew install node
+```
+
+### Si Docker manque
+
+Télécharger Docker Desktop sur https://www.docker.com/get-started
+Ouvrir l'app après installation → attendre la baleine 🐳 dans la barre de menu
+
+---
+
+## 📁 Structure du projet
 
 ```
 fraudshield-full/
-├── docker-compose.yml
+├── docker-compose.yml        ← Lance PostgreSQL + Redis
 ├── backend/
 │   ├── main.py
 │   ├── database.py
@@ -40,125 +63,194 @@ fraudshield-full/
 │   ├── fraud_engine.py
 │   ├── requirements.txt
 │   ├── .env.example
-│   ├── routers/
-│   │   ├── auth.py        ← register, login, refresh, logout, me
-│   │   ├── analyze.py     ← /v1/analyze, stats, transactions, alerts
-│   │   └── apikeys.py     ← CRUD clés API
-│   └── core/
-│       ├── config.py      ← Settings depuis .env
-│       └── security.py    ← JWT, hash, auth dependencies
+│   ├── core/
+│   │   ├── config.py
+│   │   └── security.py
+│   └── routers/
+│       ├── auth.py
+│       ├── analyze.py
+│       └── apikeys.py
 └── frontend/
     ├── package.json
     ├── next.config.js
     ├── .env.local.example
     └── src/
         ├── app/
-        │   ├── layout.tsx
-        │   ├── page.tsx               ← Redirect auto
-        │   ├── (auth)/login/page.tsx
-        │   ├── (auth)/register/page.tsx
+        │   ├── (auth)/login/
+        │   ├── (auth)/register/
         │   └── dashboard/
-        │       ├── page.tsx           ← Stats réelles
-        │       ├── transactions/page.tsx
-        │       ├── alerts/page.tsx
-        │       └── apikeys/page.tsx
         └── lib/
-            ├── api.ts                 ← Client HTTP + refresh auto
-            └── auth-context.tsx       ← Context global useAuth
+            ├── api.ts
+            └── auth-context.tsx
 ```
 
 ---
 
-## ⚙️ Prérequis
+## 🐳 Terminal 1 — Lancer la base de données
 
-| Outil | Version | Lien |
-|---|---|---|
-| Python | 3.10+ | https://python.org |
-| Node.js | 18+ | https://nodejs.org |
-| Docker + Compose | 24+ | https://docker.com |
-
----
-
-## 🚀 Lancement rapide (Docker)
+Ouvre un premier terminal dans le dossier du projet :
 
 ```bash
-unzip OS-FraudShield-full.zip
 cd fraudshield-full
-
-# Configurer les variables
-cp backend/.env.example backend/.env
-
-# Générer une clé secrète et la coller dans SECRET_KEY=
-python -c "import secrets; print(secrets.token_hex(32))"
-nano backend/.env
-
-# Lancer tout (DB + Redis + Backend + Frontend)
-docker compose up --build
-
-# Backend  → http://localhost:8000/docs
-# Frontend → http://localhost:3000
 ```
+
+Ouvrir `docker-compose.yml` et supprimer la ligne `version: "3.9"` si elle existe.
+
+Puis lancer :
+
+```bash
+docker compose up -d
+```
+
+Vérifier que tout tourne :
+
+```bash
+docker compose ps
+```
+
+Tu dois voir `db` et `redis` avec le statut `running`. ✅
 
 ---
 
-## 🛠️ Lancement manuel (développement)
+## 🐍 Terminal 2 — Backend Python
 
-### Backend
+Ouvre un **deuxième terminal** :
 
 ```bash
-cd backend
-python -m venv venv
-source venv/bin/activate      # Mac/Linux
-venv\Scripts\activate         # Windows
+cd fraudshield-full/backend
+```
 
+### Créer l'environnement virtuel
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+> Tu dois voir `(venv)` au début de la ligne dans le terminal ✅
+
+### Installer les dépendances
+
+```bash
 pip install -r requirements.txt
-cp .env.example .env          # Configurer les variables
-
-# Démarrer DB + Redis
-docker compose up db redis -d
-
-# Initialiser les tables
-python -c "from database import init_db; init_db()"
-
-# Lancer l'API
-uvicorn main:app --reload --port 8000
 ```
 
-### Frontend
+> Cette étape prend 1-2 minutes la première fois
+
+### Configurer les variables d'environnement
 
 ```bash
-cd frontend
-npm install
-cp .env.local.example .env.local
-
-# .env.local contient :
-# NEXT_PUBLIC_API_URL=http://localhost:8000
-
-npm run dev
-# → http://localhost:3000
+cp .env.example .env
 ```
+
+Ouvrir `.env` et remplacer `SECRET_KEY` par une vraie clé :
+
+```bash
+# Générer une clé sécurisée
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Copier la valeur affichée et la coller dans `.env` :
+
+```env
+DATABASE_URL=postgresql://postgres:postgres@localhost/fraudshield
+REDIS_URL=redis://localhost:6379
+SECRET_KEY=colle_ta_cle_ici
+FRAUD_THRESHOLD_BLOCK=0.80
+FRAUD_THRESHOLD_REVIEW=0.55
+```
+
+### Initialiser la base de données (une seule fois)
+
+```bash
+python3 -c "from database import init_db; init_db()"
+```
+
+> Tu dois voir les tables créées sans erreur ✅
+
+### Lancer l'API
+
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Tu dois voir :
+
+```
+✅ FraudShield API v1.0.0 démarré
+INFO: Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+```
+
+Ouvrir dans le navigateur → http://localhost:8000/docs ✅
 
 ---
 
-## 🔄 Flux complet
+## ⚛️ Terminal 3 — Frontend Next.js
 
-### Inscription
-```
-POST /auth/register
-→ Crée compte en base
-→ Génère 2 clés API (production + test)
-→ Retourne JWT + clés en clair (affichées une seule fois)
+Ouvre un **troisième terminal** :
+
+```bash
+cd fraudshield-full/frontend
 ```
 
-### Login
-```
-POST /auth/login { email, password }
-→ Vérifie password hash bcrypt
-→ Retourne access_token (24h) + refresh_token (30j)
-→ Frontend stocke dans localStorage, redirige dashboard
+### Installer les dépendances Node.js
+
+```bash
+npm install
 ```
 
-### Analyser une transaction
+> Cette étape prend 1-2 minutes la première fois
+
+### Configurer l'URL du backend
+
+```bash
+cp .env.local.example .env.local
+```
+
+Le fichier `.env.local` doit contenir :
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+### Lancer le frontend
+
+```bash
+npm run dev
+```
+
+Tu dois voir :
+
+```
+▲ Next.js 14.x.x
+- Local: http://localhost:3000
+```
+
+Ouvrir dans le navigateur → http://localhost:3000 ✅
+
+---
+
+## ✅ Vérification finale
+
+Les 3 terminaux doivent tourner en même temps :
+
+| Terminal | Commande | URL |
+|---|---|---|
+| 1 — Docker | `docker compose up -d` | — |
+| 2 — Backend | `uvicorn main:app --reload --port 8000` | http://localhost:8000/docs |
+| 3 — Frontend | `npm run dev` | http://localhost:3000 |
+
+---
+
+## 🔄 Tester que tout est connecté
+
+### 1. Créer un compte
+
+Aller sur http://localhost:3000/register et créer un compte.
+Deux clés API s'affichent → **les sauvegarder** (affichées une seule fois).
+
+### 2. Tester l'API depuis le terminal
+
 ```bash
 curl -X POST http://localhost:8000/v1/analyze \
   -H "x-api-key: fs_prod_VOTRE_CLE" \
@@ -174,76 +266,124 @@ curl -X POST http://localhost:8000/v1/analyze \
   }'
 ```
 
+Réponse attendue :
+
 ```json
 {
   "fraud_score": 0.89,
   "decision": "block",
   "risk_level": "critical",
-  "triggered_rules": ["SUSPICIOUS_IP", "HIGH_RISK_COUNTRY", "DISPOSABLE_EMAIL"],
-  "processing_time_ms": 187.4
+  "triggered_rules": ["SUSPICIOUS_IP", "HIGH_RISK_COUNTRY", "DISPOSABLE_EMAIL"]
 }
 ```
 
 ---
 
-## 🔐 Authentification — 2 modes
+## 🔁 Relancer le projet les prochaines fois
 
-| Mode | Header | Utilisé par |
-|---|---|---|
-| JWT Bearer | `Authorization: Bearer <token>` | Dashboard Next.js |
-| Clé API | `x-api-key: fs_prod_...` | App du client |
+```bash
+# Terminal 1
+cd fraudshield-full
+docker compose up -d
 
-Le refresh token renouvelle automatiquement le JWT sans déconnexion.
+# Terminal 2
+cd fraudshield-full/backend
+source venv/bin/activate      ← ne pas oublier
+uvicorn main:app --reload --port 8000
+
+# Terminal 3
+cd fraudshield-full/frontend
+npm run dev
+```
+
+> `python3 -c "from database import init_db; init_db()"` n'est à faire qu'une seule fois.
+> `npm install` et `pip install` n'est à refaire que si les dépendances changent.
+
+---
+
+## 🐛 Problèmes fréquents
+
+### `command not found: python` → utiliser `python3`
+
+Sur Mac, la commande s'appelle toujours `python3` :
+
+```bash
+python3 --version
+python3 -m venv venv
+python3 -c "from database import init_db; init_db()"
+```
+
+### `(venv)` n'apparaît pas
+
+L'environnement virtuel n'est pas activé :
+
+```bash
+source venv/bin/activate
+```
+
+### `Cannot connect to Docker daemon`
+
+Docker Desktop n'est pas ouvert. Ouvrir l'app Docker Desktop et attendre la baleine 🐳 dans la barre de menu.
+
+### `address already in use` — port occupé
+
+Un autre processus utilise le port. Tuer le processus :
+
+```bash
+# Trouver et tuer le processus sur le port 8000
+lsof -ti:8000 | xargs kill -9
+
+# Ou changer le port
+uvicorn main:app --reload --port 8001
+```
+
+### `ModuleNotFoundError`
+
+Les dépendances ne sont pas installées dans le bon environnement :
+
+```bash
+source venv/bin/activate   # activer le venv d'abord
+pip install -r requirements.txt
+```
+
+### `connection refused` sur PostgreSQL
+
+Docker n'est pas lancé ou pas encore prêt :
+
+```bash
+docker compose up -d
+docker compose ps   # vérifier que "db" est "running"
+```
+
+### CORS error dans le navigateur
+
+Vérifier que `.env.local` contient bien :
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+Et que le backend tourne sur le port 8000.
 
 ---
 
 ## 🧠 Règles de détection
 
-| Règle | Score | Déclencheur |
+| Règle | Score ajouté | Déclencheur |
 |---|---|---|
-| `BLOCKED_COUNTRY` | +0.95 | Pays sanctionné |
-| `VELOCITY_EXCEEDED` | +0.45 | 5+ transactions en 10min |
+| `BLOCKED_COUNTRY` | +0.95 | Iran, Corée du Nord, Cuba |
+| `VELOCITY_EXCEEDED` | +0.45 | 5+ transactions en 10 min |
 | `SUSPICIOUS_IP` | +0.30 | IP blacklistée |
 | `HIGH_AMOUNT` | +0.30 | Montant > 5 000€ |
-| `HIGH_RISK_COUNTRY` | +0.25 | Pays à risque |
-| `DISPOSABLE_EMAIL` | +0.20 | Email jetable |
-| `NO_DEVICE_FINGERPRINT` | +0.10 | Pas de fingerprint |
+| `HIGH_RISK_COUNTRY` | +0.25 | Pays à risque élevé |
+| `DISPOSABLE_EMAIL` | +0.20 | Email jetable (mailinator, yopmail...) |
+| `NO_DEVICE_FINGERPRINT` | +0.10 | Pas de fingerprint appareil |
 
-- Score < 0.30 → ✅ allow
-- Score 0.30-0.79 → ⚠️ review
-- Score ≥ 0.80 → 🚫 block
-
----
-
-## 📡 Endpoints
-
-| Méthode | Route | Auth | Description |
-|---|---|---|---|
-| POST | `/auth/register` | — | Créer un compte |
-| POST | `/auth/login` | — | Connexion |
-| POST | `/auth/refresh` | — | Renouveler JWT |
-| GET | `/auth/me` | JWT | Profil client |
-| POST | `/v1/analyze` | API Key | Analyser transaction |
-| GET | `/v1/stats` | JWT | KPIs dashboard |
-| GET | `/v1/transactions` | JWT | Liste transactions |
-| GET | `/v1/alerts` | JWT | Alertes actives |
-| PATCH | `/v1/alerts/:id/resolve` | JWT | Résoudre alerte |
-| GET | `/v1/apikeys` | JWT | Lister clés |
-| POST | `/v1/apikeys` | JWT | Créer clé |
-| DELETE | `/v1/apikeys/:id` | JWT | Révoquer clé |
+**Décisions finales :**
+- Score < 0.30 → ✅ `allow`
+- Score 0.30–0.79 → ⚠️ `review`
+- Score ≥ 0.80 → 🚫 `block`
 
 ---
 
-## 🐛 Dépannage
-
-**CORS error** → Vérifier `NEXT_PUBLIC_API_URL=http://localhost:8000`
-
-**401 Unauthorized** → Token expiré, se reconnecter
-
-**ModuleNotFoundError** → `source venv/bin/activate`
-
-**Port occupé** → Modifier les ports dans `docker-compose.yml`
-
----
-
-*OS FraudShield Full Stack — OpenSID Software Development — v1.0.0*
+*OS FraudShield — OpenSID Software Development — v1.0.0*
